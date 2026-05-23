@@ -2,6 +2,9 @@
 // 데이터는 parents/spouses 관계만 저장하고, 좌표는 매번 layout() 으로 계산.
 
 const STORAGE_KEY = 'family-chart-state-v2';
+const TOKEN_KEY   = 'family-chart-edit-token';
+const API_BASE    = 'https://family-chart-api.junyoung-cha83.workers.dev';
+const SAVE_DEBOUNCE_MS = 800;
 const CARD_W = 180;
 const CARD_H = 250;
 const COL_UNIT = 200;     // col 1 단위 = 화면상 200px
@@ -38,17 +41,101 @@ function loadLocal() {
   return null;
 }
 
+// 서버에 디바운스 PUT — 마지막 호출만 실제로 전송
+let _saveTimer = null;
+let _saveCtrl  = null;
+let _syncStatus = 'idle';  // idle | pending | saving | saved | error | unauthorized | readonly
+
+function setSyncStatus(s) {
+  _syncStatus = s;
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const map = {
+    idle:        { text: '',           cls: '' },
+    pending:     { text: '변경됨',     cls: 'pending' },
+    saving:      { text: '저장중…',    cls: 'saving' },
+    saved:       { text: '저장됨 ✓',   cls: 'saved' },
+    error:       { text: '오프라인',   cls: 'error' },
+    unauthorized:{ text: '토큰 오류',  cls: 'error' },
+    readonly:    { text: '읽기전용',   cls: 'readonly' },
+  };
+  const m = map[s] || map.idle;
+  el.textContent = m.text;
+  el.className   = 'sync-status ' + m.cls;
+}
+
 function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
     alert('저장 실패 — localStorage 용량 초과일 수 있어요.');
   }
+
+  const token = getEditToken();
+  if (!token) { setSyncStatus('readonly'); return; }
+
+  setSyncStatus('pending');
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(pushToServer, SAVE_DEBOUNCE_MS);
+}
+
+async function pushToServer() {
+  const token = getEditToken();
+  if (!token) return;
+
+  if (_saveCtrl) _saveCtrl.abort();
+  _saveCtrl = new AbortController();
+
+  setSyncStatus('saving');
+  try {
+    const clean = JSON.parse(JSON.stringify(state));
+    for (const p of clean.people) { delete p._row; delete p._col; }
+
+    const res = await fetch(`${API_BASE}/api/family`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Edit-Token': token },
+      body: JSON.stringify(clean),
+      signal: _saveCtrl.signal,
+    });
+    if (res.ok) {
+      setSyncStatus('saved');
+    } else if (res.status === 401) {
+      // 잘못된 토큰 → 제거하고 읽기 전용으로
+      localStorage.removeItem(TOKEN_KEY);
+      updateEditUI();
+      setSyncStatus('unauthorized');
+    } else if (res.status === 413) {
+      setSyncStatus('error');
+      alert('데이터가 너무 큽니다 (사진을 줄이거나 일부 삭제해 보세요).');
+    } else {
+      setSyncStatus('error');
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') setSyncStatus('error');
+  }
+}
+
+async function fetchFromServer() {
+  try {
+    const res = await fetch(`${API_BASE}/api/family`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json && Array.isArray(json.people)) return json;
+  } catch (e) { /* offline */ }
+  return null;
 }
 
 async function loadInitial() {
+  // 1) 서버 우선 — 다른 기기와 동기화
+  const remote = await fetchFromServer();
+  if (remote) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remote)); } catch (e) {}
+    return migrate(remote);
+  }
+  // 2) localStorage 캐시 (오프라인 fallback)
   const local = loadLocal();
   if (local) return migrate(local);
+  // 3) 번들된 기본값
   try {
     const res = await fetch('data/family.json?t=' + Date.now());
     if (res.ok) {
@@ -57,6 +144,37 @@ async function loadInitial() {
     }
   } catch (e) { /* ignore */ }
   return INITIAL_STATE();
+}
+
+// ── 편집 토큰 ─────────────────────────────────
+function getEditToken() {
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function promptEditToken() {
+  const cur = getEditToken();
+  const v = prompt(cur ? '편집 비밀번호 (비우면 로그아웃):' : '편집 비밀번호를 입력하세요:', cur);
+  if (v === null) return;  // 취소
+  if (v === '') {
+    localStorage.removeItem(TOKEN_KEY);
+  } else {
+    localStorage.setItem(TOKEN_KEY, v.trim());
+  }
+  updateEditUI();
+  // 새 토큰으로 즉시 한 번 push 시도 (검증 겸 첫 저장)
+  if (getEditToken()) pushToServer();
+  else setSyncStatus('readonly');
+}
+
+function updateEditUI() {
+  const has = !!getEditToken();
+  document.body.classList.toggle('read-only', !has);
+  const btn = document.getElementById('btnEdit');
+  if (btn) {
+    btn.textContent  = has ? '✏️ 편집중' : '🔒 편집';
+    btn.classList.toggle('active', has);
+  }
+  if (!has) setSyncStatus('readonly');
 }
 
 // 옛 스키마(row/col) → 새 스키마(parents/spouses) 마이그레이션
@@ -403,9 +521,10 @@ function makeCardWrapper(p, minR, minC) {
     };
   });
 
-  // 드래그 시작 — input/photo/+버튼/×/↑ 위에선 시작 안 함, parentMode 중에도 비활성
+  // 드래그 시작 — input/photo/+버튼/×/↑ 위에선 시작 안 함, parentMode·read-only 중에도 비활성
   cardEl.addEventListener('mousedown', (e) => {
     if (parentMode) return;
+    if (document.body.classList.contains('read-only')) return;
     if (e.button !== 0) return;
     if (e.target.closest('input, .card-photo, .card-add, .card-delete, .card-parents')) return;
     startDrag(p.id, e);
@@ -584,22 +703,48 @@ function deleteCard(id) {
   render();
 }
 
+// 사진을 canvas 로 리사이즈·JPEG 압축. 카드 표시 크기에 맞게 작게 — 서버/localStorage 용량 절약.
+function compressImage(file, maxDim = 600, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('이미지 디코드 실패'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('파일 읽기 실패'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function uploadPhoto(id) {
+  if (!getEditToken()) { alert('편집 모드에서만 사진을 변경할 수 있습니다. 헤더의 "🔒 편집" 을 눌러주세요.'); return; }
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.onchange = (e) => {
+  input.onchange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
+    try {
+      const dataUrl = await compressImage(file);
       const p = findPerson(id);
       if (!p) return;
-      p.photo = ev.target.result;
+      p.photo = dataUrl;
       saveLocal();
       render();
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      alert('이미지 처리 실패: ' + err.message);
+    }
   };
   input.click();
 }
@@ -1004,6 +1149,19 @@ function importJsonFile(file) {
   reader.readAsText(file);
 }
 
+async function refreshFromServer() {
+  const remote = await fetchFromServer();
+  if (!remote) { alert('서버에서 데이터를 가져오지 못했어요. (오프라인이거나 서버 오류)'); return; }
+  state = migrate(remote);
+  if (!state.perspective) state.perspective = 'A';
+  const radio = document.querySelector(`input[name="perspective"][value="${state.perspective}"]`);
+  if (radio) radio.checked = true;
+  syncSpouseParents();
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  render();
+  setSyncStatus(getEditToken() ? 'saved' : 'readonly');
+}
+
 function resetAll() {
   if (!confirm('모든 카드를 지우고 초기 상태(나·아내)로 돌아갈까요? localStorage 도 비웁니다.')) return;
   localStorage.removeItem(STORAGE_KEY);
@@ -1021,7 +1179,9 @@ function resetAll() {
   if (radio) radio.checked = true;
   // 기존 localStorage 데이터가 불일치 상태일 수 있으므로 동기화 한 번 수행 (예: 한쪽 부모만 가진 자식 → 양쪽 부모)
   syncSpouseParents();
-  saveLocal();
+  updateEditUI();
+  // 로드 직후 saveLocal 호출 시 서버를 덮어쓰지 않도록 — 로컬만 저장하고 끝
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
   render();
 
   document.querySelectorAll('input[name="perspective"]').forEach(r => {
@@ -1029,6 +1189,8 @@ function resetAll() {
   });
   document.getElementById('btnExport').onclick = exportJson;
   document.getElementById('btnReset').onclick  = resetAll;
+  document.getElementById('btnEdit').onclick   = promptEditToken;
+  document.getElementById('btnRefresh').onclick = refreshFromServer;
   document.getElementById('fileImport').onchange = (e) => {
     const f = e.target.files && e.target.files[0];
     if (f) importJsonFile(f);

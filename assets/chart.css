@@ -474,6 +474,46 @@ body.parent-mode .card-photo { pointer-events: none; }
   font-size: .9rem;
 }
 
+/* ── 동기화 상태 / 편집 토글 ── */
+.sync-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-left: .5rem;
+}
+.sync-status {
+  font-size: .72rem;
+  color: var(--muted);
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+.sync-status.pending  { color: #b45309; }
+.sync-status.saving   { color: #b45309; }
+.sync-status.saved    { color: #15803d; }
+.sync-status.error    { color: var(--danger); }
+.sync-status.readonly { color: var(--muted); }
+
+#btnEdit.active {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+/* ── 읽기 전용 모드 ── */
+body.read-only .card-add,
+body.read-only .card-delete,
+body.read-only .card-parents,
+body.read-only #btnReset {
+  display: none !important;
+}
+body.read-only .card-title,
+body.read-only .card-name {
+  pointer-events: none;
+  background: transparent;
+}
+body.read-only .card-photo { cursor: default; }
+body.read-only .card-photo:hover { background: #f1f5f9; }
+
 /* ── 터치 디바이스 (hover 불가) ── */
 @media (hover: none) {
   /* + / × / ↑ 버튼은 hover 없이도 항상 보이게 */

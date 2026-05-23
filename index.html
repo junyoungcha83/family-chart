@@ -29,6 +29,11 @@
     <input type="range" id="zoomRange" min="0.3" max="2" step="0.05" value="1" aria-label="확대/축소" />
     <span class="zoom-label" id="zoomLabel">100%</span>
   </div>
+  <div class="sync-bar">
+    <span class="sync-status" id="syncStatus"></span>
+    <button class="btn secondary" id="btnRefresh" title="서버에서 최신 데이터 받아오기">새로고침</button>
+    <button class="btn secondary" id="btnEdit" title="편집 비밀번호 입력/로그아웃">🔒 편집</button>
+  </div>
   <div class="toolbar">
     <button class="btn secondary" id="btnExport">JSON 내보내기</button>
     <label class="btn secondary" style="cursor:pointer;">

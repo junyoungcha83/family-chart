@@ -3,3 +3,9 @@ node_modules/
 *.log
 .vscode/
 .idea/
+
+# Cloudflare wrangler 로컬 캐시·인증
+worker/.wrangler/
+worker/.dev.vars
+.wrangler/
+.dev.vars

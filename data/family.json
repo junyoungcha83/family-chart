@@ -1,0 +1,23 @@
+{
+  "perspective": "A",
+  "people": [
+    {
+      "id": "p1",
+      "photo": "",
+      "title_a": "나",
+      "title_b": "남편",
+      "name": "",
+      "parents": [],
+      "spouses": ["p2"]
+    },
+    {
+      "id": "p2",
+      "photo": "",
+      "title_a": "아내",
+      "title_b": "나",
+      "name": "",
+      "parents": [],
+      "spouses": ["p1"]
+    }
+  ]
+}

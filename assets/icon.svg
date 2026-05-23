@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#2563eb"/>
+  <!-- 부모 (위) -->
+  <circle cx="180" cy="170" r="46" fill="#fff"/>
+  <circle cx="332" cy="170" r="46" fill="#fff"/>
+  <!-- 연결선 -->
+  <g stroke="#fff" stroke-width="10" stroke-linecap="round" fill="none">
+    <line x1="226" y1="170" x2="286" y2="170"/>
+    <line x1="256" y1="170" x2="256" y2="320"/>
+    <line x1="160" y1="320" x2="352" y2="320"/>
+    <line x1="160" y1="320" x2="160" y2="370"/>
+    <line x1="256" y1="320" x2="256" y2="370"/>
+    <line x1="352" y1="320" x2="352" y2="370"/>
+  </g>
+  <!-- 자식 (아래 3명) -->
+  <circle cx="160" cy="402" r="36" fill="#fff"/>
+  <circle cx="256" cy="402" r="36" fill="#fff"/>
+  <circle cx="352" cy="402" r="36" fill="#fff"/>
+</svg>

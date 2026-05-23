@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>가족관계도</title>
+<link rel="stylesheet" href="assets/chart.css" />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#2563eb" />
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+
+<!-- iOS Safari 홈 화면 추가 -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="가족관계도" />
+<link rel="apple-touch-icon" href="assets/icon.svg" />
+</head>
+<body>
+<header class="page-header">
+  <h1>가족관계도</h1>
+  <div class="perspective-toggle" role="radiogroup" aria-label="관점">
+    <label><input type="radio" name="perspective" value="A" checked /><span>A</span></label>
+    <label><input type="radio" name="perspective" value="B" /><span>B</span></label>
+  </div>
+  <div class="zoom-control">
+    <button class="btn secondary" id="btnFit" title="화면에 맞춤">맞춤</button>
+    <input type="range" id="zoomRange" min="0.3" max="2" step="0.05" value="1" aria-label="확대/축소" />
+    <span class="zoom-label" id="zoomLabel">100%</span>
+  </div>
+  <div class="toolbar">
+    <button class="btn secondary" id="btnExport">JSON 내보내기</button>
+    <label class="btn secondary" style="cursor:pointer;">
+      JSON 불러오기
+      <input type="file" id="fileImport" accept="application/json" hidden />
+    </label>
+    <button class="btn danger" id="btnReset">초기화</button>
+  </div>
+</header>
+
+<div class="board-wrap">
+  <div class="board-scale" id="boardScale">
+    <div class="board" id="board"></div>
+  </div>
+</div>
+
+<p class="footnote">
+  카드 위에 마우스를 올리면 사방에 <strong>+</strong> 가 나타납니다.
+  <kbd>위</kbd> 부모 · <kbd>아래</kbd> 자식 ·
+  <kbd>좌/우</kbd> 클릭 시 <strong>배우자</strong> 또는 <strong>형제</strong> 선택. 자식은 부모 중심으로 자동 정렬되고 실선으로 연결됩니다.
+  <br />
+  <strong>드래그</strong>로 카드를 잡아 다른 카드의 <kbd>위</kbd>/<kbd>아래</kbd>/<kbd>좌·우</kbd> 영역에 놓으면 <strong>부모/자식/배우자/형제</strong>로 자동 재배치됩니다.
+</p>
+
+<script src="assets/chart.js"></script>
+<script>
+  // service worker 등록 (file:// 에서는 동작 안 함 — http(s) 에서만)
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>

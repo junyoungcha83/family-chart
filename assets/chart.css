@@ -1,0 +1,526 @@
+:root {
+  --bg: #f8fafc;
+  --card: #fff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --link: #2563eb;
+  --link-bg: #eff6ff;
+  --danger: #dc2626;
+  --line: #94a3b8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 1rem;
+  font-family: -apple-system, "Segoe UI", "Noto Sans KR", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ── 헤더 ── */
+.page-header {
+  max-width: 1400px;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.page-header h1 { margin: 0; font-size: 1.4rem; }
+
+.perspective-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.perspective-toggle label {
+  position: relative;
+  padding: .45rem 1.1rem;
+  cursor: pointer;
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+.perspective-toggle label + label { border-left: 1px solid var(--border); }
+.perspective-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.perspective-toggle label:has(input:checked) { background: var(--link); color: #fff; }
+
+.toolbar {
+  margin-left: auto;
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+
+.zoom-control {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  margin-left: .5rem;
+}
+.zoom-control input[type="range"] {
+  width: 130px;
+  cursor: pointer;
+}
+.zoom-label {
+  font-size: .78rem;
+  color: var(--muted);
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.btn {
+  padding: .42rem .9rem;
+  font-size: .82rem;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: var(--link);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.btn:hover { opacity: .9; }
+.btn.secondary {
+  background: #fff;
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn.danger {
+  background: #fef2f2;
+  color: var(--danger);
+  border-color: #fecaca;
+}
+
+/* ── 보드 ── */
+.board-wrap {
+  max-width: 100%;
+  margin: 0 auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  overflow: auto;
+  min-height: 600px;
+}
+.board-scale {
+  position: relative;
+  /* width/height 는 JS 가 totalW*zoom, totalH*zoom 으로 설정 */
+}
+.board {
+  position: relative;
+  min-width: 100%;
+  min-height: 600px;
+  transform-origin: top left;
+}
+
+/* SVG 연결선 — 카드 뒤 */
+.connections {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.connections line {
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* ── 카드 wrapper (hover 영역 확장) ── */
+.card-wrapper {
+  position: absolute;
+  z-index: 2;
+  /* 위치·크기는 JS 가 설정. 크기 = 카드 + HOVER_PAD*2 (양쪽) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 카드 본체 ── */
+.card {
+  position: relative;
+  width: 180px;
+  height: 250px;
+  background: #fff;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  transition: border-color .15s, box-shadow .15s;
+}
+.card-wrapper:hover .card {
+  border-color: var(--link);
+  box-shadow: 0 3px 12px rgba(37,99,235,.18);
+}
+.card-wrapper:hover {
+  z-index: 10;  /* 호버 카드를 위로 */
+}
+
+/* 사진 영역 */
+.card-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #f1f5f9;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+.card-photo:hover { background: #e2e8f0; }
+.card-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.photo-placeholder {
+  font-size: 2.2rem;
+  color: var(--muted);
+  font-weight: 200;
+  line-height: 1;
+}
+
+/* 호칭·이름 input */
+.card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 2px;
+}
+.card-title, .card-name {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: inherit;
+  text-align: center;
+  background: transparent;
+}
+.card-title {
+  font-size: .78rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.card-name {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.card-title:hover, .card-name:hover { border-color: var(--border); background: #fff; }
+.card-title:focus, .card-name:focus {
+  border-color: var(--link);
+  outline: none;
+  background: var(--link-bg);
+}
+.card-title::placeholder, .card-name::placeholder { color: #cbd5e1; }
+
+/* 카드 삭제 버튼 — wrapper 호버 시 표시 */
+.card-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: rgba(255,255,255,.95);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--muted);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+.card-wrapper:hover .card-delete { display: flex; }
+.card-delete:hover { background: var(--danger); color: #fff; }
+
+/* 부모 지정 버튼 (× 왼쪽) */
+.card-parents {
+  position: absolute;
+  top: 4px;
+  right: 30px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: rgba(255,255,255,.95);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+.card-wrapper:hover .card-parents { display: flex; }
+.card-parents:hover { background: var(--link); color: #fff; }
+
+/* 부모 지정 모드 ── */
+body.parent-mode .card { cursor: pointer; }
+body.parent-mode .card-add,
+body.parent-mode .card-delete,
+body.parent-mode .card-parents { display: none !important; }
+body.parent-mode .card-title,
+body.parent-mode .card-name { pointer-events: none; }
+body.parent-mode .card-photo { pointer-events: none; }
+
+.card.is-self {
+  outline: 2px dashed var(--link);
+  outline-offset: 2px;
+  cursor: not-allowed;
+}
+.card.is-blocked {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.card.is-picked {
+  border-color: var(--link);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.25), 0 3px 12px rgba(37,99,235,.18);
+}
+
+/* 모드 상단 알림 바 */
+.parent-mode-bar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--link);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  z-index: 200;
+  box-shadow: 0 6px 18px rgba(0,0,0,.18);
+  font-size: .88rem;
+}
+.parent-mode-bar .pm-count {
+  background: rgba(255,255,255,.2);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.parent-mode-bar button {
+  border: none;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: .82rem;
+  cursor: pointer;
+}
+.parent-mode-bar .pm-done   { background: #fff;       color: var(--link); font-weight: 600; }
+.parent-mode-bar .pm-cancel { background: transparent; color: #fff;       border: 1px solid rgba(255,255,255,.5); }
+.parent-mode-bar .pm-done:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ── 드래그앤드롭 ─────────────────────────────── */
+.card-wrapper.is-dragging { opacity: .35; }
+.card-wrapper.is-dragging .card-add { display: none; }
+
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  opacity: .85;
+  z-index: 500;
+  transform-origin: top left;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  border-radius: 10px;
+  background: #fff;
+  border: 2px solid var(--link);
+}
+
+/* drop zone overlay — 카드 위 4분할 */
+.drop-zones {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.drop-zone {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .75rem;
+  font-weight: 700;
+  color: transparent;
+  transition: background .1s, color .1s;
+}
+.drop-zone-top    { top: 0;    left: 0;  right: 0;  height: 25%; }
+.drop-zone-bottom { bottom: 0; left: 0;  right: 0;  height: 25%; }
+.drop-zone-left   { top: 25%; bottom: 25%; left: 0;  width: 25%; }
+.drop-zone-right  { top: 25%; bottom: 25%; right: 0; width: 25%; }
+
+.drop-zone.active {
+  background: rgba(37,99,235,.22);
+  color: var(--link);
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+.card.drop-blocked {
+  outline: 2px dashed #ef4444;
+  outline-offset: 2px;
+}
+
+/* ── 방향 + 버튼 — wrapper 호버 영역 안에서 가장자리 ── */
+.card-add {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--link);
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--link);
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s, transform .15s, background .12s, color .12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  font-weight: 600;
+}
+.card-wrapper:hover .card-add {
+  opacity: 1;
+  pointer-events: auto;
+}
+.card-add:hover {
+  background: var(--link);
+  color: #fff;
+  transform: scale(1.15);
+}
+
+/* wrapper 안에서 + 위치: wrapper 가 정확히 HOVER_PAD 만큼 확장됐다고 가정 (JS: 50px) */
+.card-add-up    { top: 10px;     left: 50%; transform: translateX(-50%); }
+.card-add-down  { bottom: 10px;  left: 50%; transform: translateX(-50%); }
+.card-add-left  { left: 10px;    top: 50%; transform: translateY(-50%); }
+.card-add-right { right: 10px;   top: 50%; transform: translateY(-50%); }
+
+.card-add-up:hover    { transform: translateX(-50%) scale(1.15); }
+.card-add-down:hover  { transform: translateX(-50%) scale(1.15); }
+.card-add-left:hover  { transform: translateY(-50%) scale(1.15); }
+.card-add-right:hover { transform: translateY(-50%) scale(1.15); }
+
+/* + 버튼 클릭 시 뜨는 팝오버 메뉴 */
+.card-add-menu {
+  position: fixed;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 90px;
+}
+.card-add-menu button {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  font-size: .85rem;
+  font-family: inherit;
+  color: var(--text);
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.card-add-menu button:hover:not(:disabled) {
+  background: var(--link-bg);
+  color: var(--link);
+}
+.card-add-menu button:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+/* 빈 보드 안내 */
+.empty-hint {
+  padding: 3rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+/* ── 터치 디바이스 (hover 불가) ── */
+@media (hover: none) {
+  /* + / × / ↑ 버튼은 hover 없이도 항상 보이게 */
+  .card-add {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .card-wrapper .card-delete,
+  .card-wrapper .card-parents {
+    display: flex;
+  }
+  /* + 버튼은 살짝 작고 반투명하게 — 시각적 부담 줄임 */
+  .card-add {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+    background: rgba(255,255,255,.85);
+  }
+}
+
+/* ── 작은 화면 (모바일 폰) ── */
+@media (max-width: 640px) {
+  body { padding: .5rem; }
+  .page-header { gap: .5rem; }
+  .page-header h1 { font-size: 1.15rem; width: 100%; }
+  .zoom-control { margin-left: 0; }
+  .zoom-control input[type="range"] { width: 90px; }
+  .toolbar { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .btn { padding: .38rem .7rem; font-size: .78rem; }
+  .footnote { display: none; }  /* 데스크탑 키보드 안내라 모바일에선 숨김 */
+}
+
+/* 보조 텍스트 */
+.footnote {
+  max-width: 1400px;
+  margin: .75rem auto 0;
+  font-size: .78rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.footnote strong { color: var(--link); }
+.footnote kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: .72rem;
+}

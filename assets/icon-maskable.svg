@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- maskable: 안전영역(가운데 80%)에 컨텐츠를 배치, 외곽 10% 는 마스킹될 수 있음 -->
+  <rect width="512" height="512" fill="#2563eb"/>
+  <g transform="translate(51 51) scale(0.8)">
+    <circle cx="180" cy="170" r="46" fill="#fff"/>
+    <circle cx="332" cy="170" r="46" fill="#fff"/>
+    <g stroke="#fff" stroke-width="10" stroke-linecap="round" fill="none">
+      <line x1="226" y1="170" x2="286" y2="170"/>
+      <line x1="256" y1="170" x2="256" y2="320"/>
+      <line x1="160" y1="320" x2="352" y2="320"/>
+      <line x1="160" y1="320" x2="160" y2="370"/>
+      <line x1="256" y1="320" x2="256" y2="370"/>
+      <line x1="352" y1="320" x2="352" y2="370"/>
+    </g>
+    <circle cx="160" cy="402" r="36" fill="#fff"/>
+    <circle cx="256" cy="402" r="36" fill="#fff"/>
+    <circle cx="352" cy="402" r="36" fill="#fff"/>
+  </g>
+</svg>

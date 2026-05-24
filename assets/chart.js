@@ -703,27 +703,194 @@ function deleteCard(id) {
   render();
 }
 
-// 사진을 canvas 로 리사이즈·JPEG 압축. 카드 표시 크기에 맞게 작게 — 서버/localStorage 용량 절약.
-function compressImage(file, maxDim = 600, quality = 0.78) {
+// 파일 → Image 객체 (FileReader 경유)
+function fileToImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
-      img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
+      img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('이미지 디코드 실패'));
       img.src = ev.target.result;
     };
     reader.onerror = () => reject(new Error('파일 읽기 실패'));
     reader.readAsDataURL(file);
+  });
+}
+
+// 크롭 영역 (원본 픽셀 기준) → canvas 로 잘라서 JPEG 압축
+function cropToDataUrl(img, region, outDim = 600, quality = 0.78) {
+  const canvas = document.createElement('canvas');
+  canvas.width = outDim;
+  canvas.height = outDim;
+  canvas.getContext('2d').drawImage(
+    img,
+    region.x, region.y, region.size, region.size,   // src 영역 (원본 좌표)
+    0, 0, outDim, outDim                            // dest (출력 캔버스 가득)
+  );
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+// 크롭 다이얼로그 — 이미지를 화면에 띄우고 1:1 박스 드래그/리사이즈
+// resolve(region | null) — null 이면 사용자 취소
+function openCropDialog(img) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'crop-overlay';
+    overlay.innerHTML = `
+      <div class="crop-hint">사진을 잘라낼 영역을 정사각형으로 선택하세요. 박스 안: 이동 · 모서리: 크기 조정</div>
+      <div class="crop-stage">
+        <div class="crop-img-wrap">
+          <img class="crop-img" alt="" />
+          <div class="crop-box">
+            <div class="crop-handle h-tl" data-h="tl"></div>
+            <div class="crop-handle h-tr" data-h="tr"></div>
+            <div class="crop-handle h-bl" data-h="bl"></div>
+            <div class="crop-handle h-br" data-h="br"></div>
+          </div>
+        </div>
+      </div>
+      <div class="crop-footer">
+        <button class="btn secondary" data-act="cancel">취소</button>
+        <button class="btn" data-act="ok">확인</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+
+    const imgEl = overlay.querySelector('.crop-img');
+    const wrap  = overlay.querySelector('.crop-img-wrap');
+    const box   = overlay.querySelector('.crop-box');
+
+    imgEl.src = img.src;
+
+    // 박스 상태 (wrap 기준 픽셀)
+    let bx = 0, by = 0, bs = 0;  // box left, top, size
+    let iw = 0, ih = 0;          // imgEl 표시 크기
+
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+    function applyBox() {
+      box.style.left   = bx + 'px';
+      box.style.top    = by + 'px';
+      box.style.width  = bs + 'px';
+      box.style.height = bs + 'px';
+    }
+
+    function initBox() {
+      const r = imgEl.getBoundingClientRect();
+      iw = r.width;
+      ih = r.height;
+      wrap.style.width  = iw + 'px';
+      wrap.style.height = ih + 'px';
+      bs = Math.round(Math.min(iw, ih) * 0.8);
+      bx = Math.round((iw - bs) / 2);
+      by = Math.round((ih - bs) / 2);
+      applyBox();
+    }
+
+    // 이미지 로드 완료 시점 (캐시되면 이미 로드된 상태일 수도 있음)
+    if (imgEl.complete && imgEl.naturalWidth > 0) {
+      requestAnimationFrame(initBox);
+    } else {
+      imgEl.addEventListener('load', initBox, { once: true });
+    }
+
+    // ── 드래그 처리 (pointer events: 마우스+터치 통합) ──
+    let drag = null;  // { mode: 'move'|'tl'|'tr'|'bl'|'br', startX, startY, sx, sy, ss }
+
+    function onDown(e) {
+      const t = e.target;
+      const handle = t.classList.contains('crop-handle') ? t.dataset.h : null;
+      if (!handle && t !== box) return;
+      e.preventDefault();
+      const pt = pointer(e);
+      drag = {
+        mode: handle || 'move',
+        startX: pt.x, startY: pt.y,
+        sx: bx, sy: by, ss: bs,
+      };
+      // pointer capture 으로 모달 밖 dragmove 도 받음
+      if (e.pointerId !== undefined && t.setPointerCapture) {
+        try { t.setPointerCapture(e.pointerId); } catch (e) {}
+      }
+    }
+
+    function onMove(e) {
+      if (!drag) return;
+      e.preventDefault();
+      const pt = pointer(e);
+      const dx = pt.x - drag.startX;
+      const dy = pt.y - drag.startY;
+
+      if (drag.mode === 'move') {
+        bx = clamp(drag.sx + dx, 0, iw - bs);
+        by = clamp(drag.sy + dy, 0, ih - bs);
+      } else {
+        // 리사이즈 — 1:1 유지. 모서리에서 가장 큰 delta 채택
+        let newSize = drag.ss;
+        let newX = drag.sx, newY = drag.sy;
+        if (drag.mode === 'br') {
+          newSize = Math.max(40, Math.min(iw - drag.sx, ih - drag.sy, drag.ss + Math.max(dx, dy)));
+        } else if (drag.mode === 'tl') {
+          const cap = Math.min(drag.sx + drag.ss, drag.sy + drag.ss);
+          newSize = Math.max(40, Math.min(cap, drag.ss - Math.min(dx, dy)));
+          newX = drag.sx + drag.ss - newSize;
+          newY = drag.sy + drag.ss - newSize;
+        } else if (drag.mode === 'tr') {
+          const cap = Math.min(iw - drag.sx, drag.sy + drag.ss);
+          newSize = Math.max(40, Math.min(cap, drag.ss + Math.max(dx, -dy)));
+          newY = drag.sy + drag.ss - newSize;
+        } else if (drag.mode === 'bl') {
+          const cap = Math.min(drag.sx + drag.ss, ih - drag.sy);
+          newSize = Math.max(40, Math.min(cap, drag.ss + Math.max(-dx, dy)));
+          newX = drag.sx + drag.ss - newSize;
+        }
+        bs = newSize;
+        bx = clamp(newX, 0, iw - bs);
+        by = clamp(newY, 0, ih - bs);
+      }
+      applyBox();
+    }
+
+    function onUp() { drag = null; }
+
+    function pointer(e) {
+      const r = wrap.getBoundingClientRect();
+      const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+      const py = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+      return { x: px, y: py };
+    }
+
+    box.addEventListener('pointerdown', onDown);
+    overlay.addEventListener('pointermove', onMove);
+    overlay.addEventListener('pointerup', onUp);
+    overlay.addEventListener('pointercancel', onUp);
+
+    // 창 리사이즈 시 박스 위치 보정 (이미지 크기 바뀜)
+    window.addEventListener('resize', initBox);
+
+    // 확인 / 취소
+    function cleanup(result) {
+      window.removeEventListener('resize', initBox);
+      document.body.style.overflow = '';
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.querySelector('[data-act="cancel"]').onclick = () => cleanup(null);
+    overlay.querySelector('[data-act="ok"]').onclick = () => {
+      // 화면 박스 → 원본 이미지 좌표 변환
+      const scale = img.naturalWidth / iw;
+      cleanup({
+        x: Math.round(bx * scale),
+        y: Math.round(by * scale),
+        size: Math.round(bs * scale),
+      });
+    };
+    // ESC = 취소
+    function onKey(e) {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); cleanup(null); }
+    }
+    document.addEventListener('keydown', onKey);
   });
 }
 
@@ -736,7 +903,10 @@ function uploadPhoto(id) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     try {
-      const dataUrl = await compressImage(file);
+      const img = await fileToImage(file);
+      const region = await openCropDialog(img);
+      if (!region) return;  // 사용자 취소
+      const dataUrl = cropToDataUrl(img, region);
       const p = findPerson(id);
       if (!p) return;
       p.photo = dataUrl;

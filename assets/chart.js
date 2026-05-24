@@ -795,30 +795,34 @@ function openCropDialog(img) {
       imgEl.addEventListener('load', initBox, { once: true });
     }
 
-    // ── 드래그 처리 (pointer events: 마우스+터치 통합) ──
-    let drag = null;  // { mode: 'move'|'tl'|'tr'|'bl'|'br', startX, startY, sx, sy, ss }
+    // ── 드래그 처리 (mouse + touch 양쪽 직접 처리 — 모바일 사파리 호환) ──
+    let drag = null;  // { mode, startX, startY, sx, sy, ss }
+
+    function pointPos(e) {
+      const r = wrap.getBoundingClientRect();
+      const cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      const cy = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+      return { x: cx - r.left, y: cy - r.top };
+    }
 
     function onDown(e) {
       const t = e.target;
-      const handle = t.classList.contains('crop-handle') ? t.dataset.h : null;
+      const handle = t.classList && t.classList.contains('crop-handle') ? t.dataset.h : null;
       if (!handle && t !== box) return;
       e.preventDefault();
-      const pt = pointer(e);
+      e.stopPropagation();
+      const pt = pointPos(e);
       drag = {
         mode: handle || 'move',
         startX: pt.x, startY: pt.y,
         sx: bx, sy: by, ss: bs,
       };
-      // pointer capture 으로 모달 밖 dragmove 도 받음
-      if (e.pointerId !== undefined && t.setPointerCapture) {
-        try { t.setPointerCapture(e.pointerId); } catch (e) {}
-      }
     }
 
     function onMove(e) {
       if (!drag) return;
       e.preventDefault();
-      const pt = pointer(e);
+      const pt = pointPos(e);
       const dx = pt.x - drag.startX;
       const dy = pt.y - drag.startY;
 
@@ -826,7 +830,6 @@ function openCropDialog(img) {
         bx = clamp(drag.sx + dx, 0, iw - bs);
         by = clamp(drag.sy + dy, 0, ih - bs);
       } else {
-        // 리사이즈 — 1:1 유지. 모서리에서 가장 큰 delta 채택
         let newSize = drag.ss;
         let newX = drag.sx, newY = drag.sy;
         if (drag.mode === 'br') {
@@ -854,17 +857,19 @@ function openCropDialog(img) {
 
     function onUp() { drag = null; }
 
-    function pointer(e) {
-      const r = wrap.getBoundingClientRect();
-      const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-      const py = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-      return { x: px, y: py };
-    }
-
-    box.addEventListener('pointerdown', onDown);
-    overlay.addEventListener('pointermove', onMove);
-    overlay.addEventListener('pointerup', onUp);
-    overlay.addEventListener('pointercancel', onUp);
+    // box(이동) + handle(리사이즈) 양쪽에 down 등록 — bubble 만 의존 X
+    box.addEventListener('mousedown', onDown);
+    box.addEventListener('touchstart', onDown, { passive: false });
+    overlay.querySelectorAll('.crop-handle').forEach(h => {
+      h.addEventListener('mousedown', onDown);
+      h.addEventListener('touchstart', onDown, { passive: false });
+    });
+    // move/up 은 document 에 — 손가락이 박스 밖으로 나가도 이벤트 받음
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+    document.addEventListener('touchcancel', onUp);
 
     // 창 리사이즈 시 박스 위치 보정 (이미지 크기 바뀜)
     window.addEventListener('resize', initBox);
@@ -872,6 +877,11 @@ function openCropDialog(img) {
     // 확인 / 취소
     function cleanup(result) {
       window.removeEventListener('resize', initBox);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+      document.removeEventListener('touchcancel', onUp);
       document.body.style.overflow = '';
       overlay.remove();
       resolve(result);

@@ -757,6 +757,12 @@ function openCropDialog(img) {
     `;
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
+    // 뒤로가기로 앱을 나가지 않고 크롭만 닫히도록 — history 레이어 푸시.
+    // popstate 가 오면 (사용자 뒤로가기) cleanup(null) — 취소와 동일.
+    history.pushState({ familyChart: 'crop' }, '');
+    let _internalClose = false;
+    function onPopState() { _internalClose = true; cleanup(null); }
+    window.addEventListener('popstate', onPopState);
 
     const imgEl = overlay.querySelector('.crop-img');
     const wrap  = overlay.querySelector('.crop-img-wrap');
@@ -940,8 +946,15 @@ function openCropDialog(img) {
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerup', onPointerUp);
       document.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('popstate', onPopState);
       document.body.style.overflow = '';
       overlay.remove();
+      // UI 로 닫는 경우(취소/확인/ESC) — pushState 로 쌓아둔 레이어를 정리해서
+      // 다음 번 뒤로가기가 한 칸 더 거슬러 가지 않도록 동기화.
+      // popstate 로 들어온 경우는 브라우저가 이미 pop 했으므로 또 부르지 않음.
+      if (!_internalClose && history.state && history.state.familyChart === 'crop') {
+        history.back();
+      }
       resolve(result);
     }
     overlay.querySelector('[data-act="cancel"]').onclick = () => cleanup(null);

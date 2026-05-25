@@ -761,6 +761,7 @@ function openCropDialog(img) {
     const imgEl = overlay.querySelector('.crop-img');
     const wrap  = overlay.querySelector('.crop-img-wrap');
     const box   = overlay.querySelector('.crop-box');
+    const stage = overlay.querySelector('.crop-stage');
 
     imgEl.src = img.src;
 
@@ -776,23 +777,68 @@ function openCropDialog(img) {
       box.style.height = bs + 'px';
     }
 
+    // initBox — stage 의 가용 공간을 측정하고 이미지를 그 안에 정확히 fit.
+    // CSS max-width: 100% 체인에 의존하지 않고 JS 가 직접 explicit pixel 크기를
+    // 정함 — flex + inline-block 의 브라우저별 layout 차이로 인한 oversize 방지.
     function initBox() {
-      const r = imgEl.getBoundingClientRect();
-      iw = r.width;
-      ih = r.height;
-      wrap.style.width  = iw + 'px';
-      wrap.style.height = ih + 'px';
-      bs = Math.round(Math.min(iw, ih) * 0.8);
-      bx = Math.round((iw - bs) / 2);
-      by = Math.round((ih - bs) / 2);
+      const nw = imgEl.naturalWidth || 0;
+      const nh = imgEl.naturalHeight || 0;
+      if (!nw || !nh) return;
+
+      // 일단 explicit 크기를 풀어서 stage 의 실제 가용 영역만 측정 (이전 init 의
+      // 잔존 크기가 측정을 왜곡하는 것 방지).
+      wrap.style.width  = '';
+      wrap.style.height = '';
+      imgEl.style.width  = '';
+      imgEl.style.height = '';
+
+      const stageRect = stage.getBoundingClientRect();
+      const cs = getComputedStyle(stage);
+      const padL = parseFloat(cs.paddingLeft) || 0;
+      const padR = parseFloat(cs.paddingRight) || 0;
+      const padT = parseFloat(cs.paddingTop) || 0;
+      const padB = parseFloat(cs.paddingBottom) || 0;
+      const sw = Math.max(50, stageRect.width  - padL - padR);
+      const sh = Math.max(50, stageRect.height - padT - padB);
+
+      // contain fit — 원본보다 크게 키우지는 않음 (불필요한 흐림 방지)
+      const scale = Math.min(sw / nw, sh / nh, 1);
+      const newIw = Math.max(40, Math.round(nw * scale));
+      const newIh = Math.max(40, Math.round(nh * scale));
+
+      // 사이즈 변경시 기존 box 위치/크기 비례 유지
+      if (iw > 0 && ih > 0) {
+        const ratioX = newIw / iw;
+        const ratioY = newIh / ih;
+        bs = Math.max(40, Math.min(newIw, newIh, Math.round(bs * Math.min(ratioX, ratioY))));
+        bx = Math.max(0, Math.min(newIw - bs, Math.round(bx * ratioX)));
+        by = Math.max(0, Math.min(newIh - bs, Math.round(by * ratioY)));
+      } else {
+        bs = Math.round(Math.min(newIw, newIh) * 0.8);
+        bx = Math.round((newIw - bs) / 2);
+        by = Math.round((newIh - bs) / 2);
+      }
+      iw = newIw;
+      ih = newIh;
+
+      // explicit 크기 적용 — 더이상 CSS max-* 체인에 의존 안 함
+      imgEl.style.width  = iw + 'px';
+      imgEl.style.height = ih + 'px';
+      wrap.style.width   = iw + 'px';
+      wrap.style.height  = ih + 'px';
       applyBox();
     }
 
-    // 이미지 로드 완료 시점 (캐시되면 이미 로드된 상태일 수도 있음)
+    // 이미지 로드 시점 (캐시되면 이미 로드된 상태일 수도 있음).
+    // 단발 requestAnimationFrame 로는 CSS layout 이 안정화되기 전이 있어,
+    // 두 프레임 뒤에 한 번 더 확인 — 모바일에서 안전.
+    function scheduleInit() {
+      requestAnimationFrame(() => requestAnimationFrame(initBox));
+    }
     if (imgEl.complete && imgEl.naturalWidth > 0) {
-      requestAnimationFrame(initBox);
+      scheduleInit();
     } else {
-      imgEl.addEventListener('load', initBox, { once: true });
+      imgEl.addEventListener('load', scheduleInit, { once: true });
     }
 
     // ── 드래그 처리 — Pointer Events 단일화 (mouse·touch·pen 통합, iOS Safari 13+ OK) ──
@@ -873,12 +919,24 @@ function openCropDialog(img) {
     document.addEventListener('pointerup', onPointerUp);
     document.addEventListener('pointercancel', onPointerUp);
 
-    // 창 리사이즈 시 박스 위치 보정 (이미지 크기 바뀜)
-    window.addEventListener('resize', initBox);
+    // resize / viewport 변화 시 재배치 — 모바일 주소창 표시/숨김, 회전 모두 대응
+    const onResize = () => scheduleInit();
+    window.addEventListener('resize', onResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onResize);
+    }
+    // ResizeObserver 로 stage 의 실제 크기 변화 감지 (window resize 보다 신뢰성 ↑)
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => scheduleInit());
+      ro.observe(stage);
+    }
 
     // 확인 / 취소
     function cleanup(result) {
-      window.removeEventListener('resize', initBox);
+      window.removeEventListener('resize', onResize);
+      if (window.visualViewport) window.visualViewport.removeEventListener('resize', onResize);
+      if (ro) ro.disconnect();
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerup', onPointerUp);
       document.removeEventListener('pointercancel', onPointerUp);

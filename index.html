@@ -20,9 +20,9 @@
 <body>
 <header class="page-header">
   <h1>가족관계도</h1>
-  <div class="perspective-toggle" role="radiogroup" aria-label="관점">
-    <label><input type="radio" name="perspective" value="A" checked /><span>A</span></label>
-    <label><input type="radio" name="perspective" value="B" /><span>B</span></label>
+  <div class="version-tabs" role="tablist" aria-label="가계 버전">
+    <button class="version-tab active" role="tab" data-version="a" aria-selected="true">소속 가계</button>
+    <button class="version-tab" role="tab" data-version="b" aria-selected="false">결혼 가계</button>
   </div>
   <div class="zoom-control">
     <button class="btn secondary" id="btnFit" title="화면에 맞춤">맞춤</button>

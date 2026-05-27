@@ -1,6 +1,6 @@
 // 간단한 오프라인 캐시 — 정적 자산을 처음 방문 시 캐싱, 이후 오프라인에서도 로드 가능.
 // 캐시 이름을 바꾸면(=배포 버전 변경) 옛 캐시는 자동 폐기.
-const CACHE = 'family-chart-v8';
+const CACHE = 'family-chart-v9';
 const ASSETS = [
   './',
   './index.html',

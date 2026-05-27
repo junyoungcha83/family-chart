@@ -882,7 +882,14 @@ function openCropDialog(img) {
     const wrap  = overlay.querySelector('.crop-img-wrap');
     const box   = overlay.querySelector('.crop-box');
     const stage = overlay.querySelector('.crop-stage');
+    const hintEl   = overlay.querySelector('.crop-hint');
+    const footerEl = overlay.querySelector('.crop-footer');
 
+    // initBox 가 사이즈를 정하기 전까지 이미지가 원본 크기로 잠깐 보이지 않도록
+    // 명시적으로 0 픽셀로 시작. initBox 가 픽셀 사이즈를 설정한 뒤 보임.
+    imgEl.style.width  = '0px';
+    imgEl.style.height = '0px';
+    imgEl.style.visibility = 'hidden';
     imgEl.src = img.src;
 
     // 박스 상태 (wrap 기준 픽셀)
@@ -897,32 +904,36 @@ function openCropDialog(img) {
       box.style.height = bs + 'px';
     }
 
-    // initBox — stage 의 가용 공간을 측정하고 이미지를 그 안에 정확히 fit.
-    // CSS max-width: 100% 체인에 의존하지 않고 JS 가 직접 explicit pixel 크기를
-    // 정함 — flex + inline-block 의 브라우저별 layout 차이로 인한 oversize 방지.
+    // initBox — 가시 viewport 크기를 기준으로 이미지를 contain fit.
+    // stage.getBoundingClientRect() 는 모바일에서 주소창 동작·flex 레이아웃 타이밍
+    // 때문에 부정확할 수 있어 visualViewport / window 크기에서 hint·footer 실제
+    // 높이만 뺀 값을 사용. PC·모바일 모두 항상 화면에 꽉 차게 fit.
     function initBox() {
       const nw = imgEl.naturalWidth || 0;
       const nh = imgEl.naturalHeight || 0;
       if (!nw || !nh) return;
 
-      // 일단 explicit 크기를 풀어서 stage 의 실제 가용 영역만 측정 (이전 init 의
-      // 잔존 크기가 측정을 왜곡하는 것 방지).
-      wrap.style.width  = '';
-      wrap.style.height = '';
-      imgEl.style.width  = '';
-      imgEl.style.height = '';
-
-      const stageRect = stage.getBoundingClientRect();
+      // 가시 영역 — visualViewport 가 가장 정확 (iOS 주소창/키보드 반영)
+      const vw = (window.visualViewport && window.visualViewport.width)  || window.innerWidth;
+      const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      // hint·footer 의 실제 높이를 viewport 에서 제외
+      const hintH   = hintEl   ? hintEl.getBoundingClientRect().height   : 0;
+      const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
+      // stage 패딩
       const cs = getComputedStyle(stage);
-      const padL = parseFloat(cs.paddingLeft) || 0;
-      const padR = parseFloat(cs.paddingRight) || 0;
-      const padT = parseFloat(cs.paddingTop) || 0;
+      const padL = parseFloat(cs.paddingLeft)   || 0;
+      const padR = parseFloat(cs.paddingRight)  || 0;
+      const padT = parseFloat(cs.paddingTop)    || 0;
       const padB = parseFloat(cs.paddingBottom) || 0;
-      const sw = Math.max(50, stageRect.width  - padL - padR);
-      const sh = Math.max(50, stageRect.height - padT - padB);
+      // safe-area inset (overlay padding) — env(safe-area-inset-*) 가 적용된 경우 반영
+      const ocs = getComputedStyle(overlay);
+      const safeT = parseFloat(ocs.paddingTop)    || 0;
+      const safeB = parseFloat(ocs.paddingBottom) || 0;
+      const sw = Math.max(50, vw - padL - padR);
+      const sh = Math.max(50, vh - hintH - footerH - padT - padB - safeT - safeB);
 
-      // contain fit — 원본보다 크게 키우지는 않음 (불필요한 흐림 방지)
-      const scale = Math.min(sw / nw, sh / nh, 1);
+      // contain fit — 원본보다 크게도 키워 화면에 꽉 차게 (작은 사진도 편하게 크롭).
+      const scale = Math.min(sw / nw, sh / nh);
       const newIw = Math.max(40, Math.round(nw * scale));
       const newIh = Math.max(40, Math.round(nh * scale));
 
@@ -941,11 +952,12 @@ function openCropDialog(img) {
       iw = newIw;
       ih = newIh;
 
-      // explicit 크기 적용 — 더이상 CSS max-* 체인에 의존 안 함
-      imgEl.style.width  = iw + 'px';
-      imgEl.style.height = ih + 'px';
-      wrap.style.width   = iw + 'px';
-      wrap.style.height  = ih + 'px';
+      // explicit 크기 적용 + 노출
+      imgEl.style.width      = iw + 'px';
+      imgEl.style.height     = ih + 'px';
+      imgEl.style.visibility = 'visible';
+      wrap.style.width       = iw + 'px';
+      wrap.style.height      = ih + 'px';
       applyBox();
     }
 

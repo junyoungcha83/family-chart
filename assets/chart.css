@@ -73,6 +73,14 @@ body {
   width: 130px;
   cursor: pointer;
 }
+/* 확대 ±10% 스텝 버튼 — 슬라이더 양옆에서 미세 조정 */
+.zoom-step {
+  width: 28px;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
 .zoom-label {
   font-size: .78rem;
   color: var(--muted);
@@ -110,10 +118,10 @@ body {
   margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: 1fr auto;
+  /* 각 row 가 자기 콘텐츠 크기 결정 — wrap 이 콘텐츠 + 여백 정도로 줄면
+     아래 가로 슬라이더가 카드 바로 아래에 붙음. wrap 자체에 max-height 둠. */
+  grid-template-rows: auto auto;
   gap: 6px;
-  /* 페이지 자체가 스크롤되지 않고 보드 안에서 스크롤되게 — viewport 기준 높이 한정 */
-  max-height: calc(100dvh - 220px);
 }
 .board-wrap {
   grid-column: 1;
@@ -123,7 +131,11 @@ body {
   border-radius: 8px;
   padding: 0;
   overflow: auto;          /* 확대 시 우/하 스크롤바 자동 표시 */
-  min-height: 600px;
+  /* 빈 보드/축소 시 너무 작아지지 않게 최소 높이. 콘텐츠가 더 크면 JS 가
+     wrap 의 height 를 콘텐츠+여백으로 늘려 슬라이더가 카드 바로 아래 위치. */
+  min-height: 360px;
+  /* 페이지 자체가 스크롤되지 않고 보드 안에서 스크롤되게 — viewport 기준 한도 */
+  max-height: calc(100dvh - 220px);
   /* 모바일에서 momentum 스크롤 */
   -webkit-overflow-scrolling: touch;
 }

@@ -1499,6 +1499,17 @@ function applyZoom() {
   const lbl = document.getElementById('zoomLabel');
   if (lbl) lbl.textContent = Math.round(zoom * 100) + '%';
 
+  // wrap 높이를 콘텐츠+여백 정도로 줄여 가로 슬라이더가 카드 바로 아래에 붙도록.
+  // CSS 의 min-height(360) / max-height(calc(100dvh-220)) 와 일치하는 범위 안에서 결정.
+  const wrap = document.getElementById('boardWrap');
+  if (wrap) {
+    const GAP = 24;
+    const minH = 360;
+    const maxH = Math.max(minH, window.innerHeight - 220);
+    const desired = (th * zoom) + GAP;  // padding/border 포함 — overflow 살짝 양보가 더 보기 좋음
+    wrap.style.height = Math.min(maxH, Math.max(minH, desired)) + 'px';
+  }
+
   // 보드 크기 바뀜 → 팬 슬라이더 max 도 갱신
   syncPanSliderRange();
 }
@@ -1622,6 +1633,11 @@ function syncVersionTabsUI() {
   };
   document.getElementById('zoomRange').oninput = (e) => setZoom(parseFloat(e.target.value));
   document.getElementById('btnFit').onclick    = fitToScreen;
+  // ± 10% 스텝 버튼 — range 의 5% step 과 별개로 명시적 미세 조정
+  const ZOOM_STEP = 0.10;
+  const stepZoom = (delta) => setZoom(Math.max(0.3, Math.min(2, +((zoom + delta).toFixed(2)))));
+  document.getElementById('btnZoomOut').onclick = () => stepZoom(-ZOOM_STEP);
+  document.getElementById('btnZoomIn').onclick  = () => stepZoom(+ZOOM_STEP);
   window.addEventListener('resize', () => { if (autoFit) applyZoom(); else syncPanSliderRange(); });
 
   // 팬 슬라이더 ↔ 보드 스크롤 동기화

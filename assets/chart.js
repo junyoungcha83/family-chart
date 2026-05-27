@@ -14,7 +14,7 @@ const PAD = 80;           // 보드 내부 padding (좌상)
 const HOVER_PAD = 50;     // + 버튼 hit-area 확장 (px)
 
 // 버전 모델:
-//   - activeVersion: 화면에 보이는 가계 버전 ('a' = 소속 가계 / 'b' = 결혼 가계)
+//   - activeVersion: 화면에 보이는 가계 버전 ('a' = 가 / 'b' = 나)
 //   - 각 person.versions: 어느 버전들에 표시될지 (['a','b'] = 양쪽 = DEFAULT)
 //   - title_a / title_b: 같은 사람이 두 가계에서 다른 호칭일 수 있어 둘 다 보관
 // DEFAULT 4명 (자기 + 배우자 + 자녀 2) 은 versions: ['a','b'] 로 양쪽 탭에 항상 노출.
@@ -473,37 +473,57 @@ function makeConnectionsSvg(w, h, minR, minC) {
     groups[key].children.push(p);
   }
 
-  // 같은 세대에 여러 부모 그룹이 있으면 horizontal sibling 라인의 midY 가 겹쳐
-  // 보임 (자식 분배 가로선이 같은 Y 에서 교차). 그룹마다 작은 stagger 오프셋을
-  // 주어 같은 띠 안에서 서로 다른 Y 로 펼쳐지게 한다.
-  // 자식 행이 같은 그룹들끼리 묶어 인덱스 부여.
+  // 같은 세대에 여러 부모 그룹의 자식 분배선이 같은 midY 에서 X 범위가 겹치면
+  // 한 줄처럼 보임. X 범위가 겹치는 그룹끼리만 묶어서 midY 를 위/아래로 stagger.
   const groupKeys = Object.keys(groups);
-  const childRowOf = {};
+  const groupBounds = {};   // key → { row (min child row), xLeft, xRight }
   for (const key of groupKeys) {
-    const childRows = groups[key].children.map(c => c._row);
-    childRowOf[key] = Math.min(...childRows);
+    const g = groups[key];
+    const parents = g.parents.map(findPerson).filter(Boolean);
+    const childRows = g.children.map(c => c._row);
+    const parentCxs = parents.map(pp => cardX(pp, minC) + CARD_W / 2);
+    const parentCx  = parents.length
+      ? (Math.min(...parentCxs) + Math.max(...parentCxs)) / 2
+      : 0;
+    const childCxs  = g.children.map(c => cardX(c, minC) + CARD_W / 2);
+    const allCxs    = [parentCx, ...childCxs];
+    groupBounds[key] = {
+      row: Math.min(...childRows),
+      xLeft:  Math.min(...allCxs),
+      xRight: Math.max(...allCxs),
+    };
   }
-  // 자식행별 그룹 인덱스 (같은 행에 여러 그룹이면 0,1,2... 순서 부여)
   const byChildRow = {};
   for (const key of groupKeys) {
-    const r = childRowOf[key];
-    if (!byChildRow[r]) byChildRow[r] = [];
-    byChildRow[r].push(key);
+    const r = groupBounds[key].row;
+    (byChildRow[r] = byChildRow[r] || []).push(key);
   }
-  const groupOffset = {};   // key → midY offset (px)
-  const OFFSET_STEP = 10;
+  const groupOffset = {};   // key → midY offset (px). 양수 = 아래로
+  const OFFSET_STEP = 22;   // 시각적으로 확실히 분리되도록 충분히 크게
   for (const r in byChildRow) {
     const keys = byChildRow[r];
-    if (keys.length === 1) {
-      groupOffset[keys[0]] = 0;
-      continue;
+    // xLeft 기준으로 정렬한 뒤 X 범위가 겹치는 그룹들을 하나의 클러스터로 묶고
+    // 각 클러스터 안에서만 가운데 0 기준으로 stagger.
+    keys.sort((a, b) => groupBounds[a].xLeft - groupBounds[b].xLeft);
+    const clusters = [];
+    let cur = null;
+    for (const k of keys) {
+      const b = groupBounds[k];
+      if (cur && b.xLeft <= cur.xRight) {
+        cur.keys.push(k);
+        cur.xRight = Math.max(cur.xRight, b.xRight);
+      } else {
+        cur = { keys: [k], xRight: b.xRight };
+        clusters.push(cur);
+      }
     }
-    // 가운데 0 기준 좌우 대칭으로 stagger: -2, -1, 0, +1, +2 ...
-    const half = (keys.length - 1) / 2;
-    keys.sort();  // 일관된 순서
-    keys.forEach((k, i) => {
-      groupOffset[k] = Math.round((i - half) * OFFSET_STEP);
-    });
+    for (const cl of clusters) {
+      if (cl.keys.length === 1) { groupOffset[cl.keys[0]] = 0; continue; }
+      const half = (cl.keys.length - 1) / 2;
+      cl.keys.forEach((k, i) => {
+        groupOffset[k] = Math.round((i - half) * OFFSET_STEP);
+      });
+    }
   }
 
   for (const key in groups) {
@@ -518,8 +538,17 @@ function makeConnectionsSvg(w, h, minR, minC) {
     const childTopY = Math.min(...g.children.map(c => cardY(c, minR)));
     const midY = (parentBottomY + childTopY) / 2 + (groupOffset[key] || 0);
 
-    // 부모 가운데 → midY 까지 세로선
-    addLine(parentCenterX, parentBottomY, parentCenterX, midY);
+    // 부부 한 쌍이 부모인 경우 — 세로선의 시작을 두 카드 사이의 결혼선(가로) 한
+    // 가운데에서 떨어뜨려 T자 분기처럼 보이게 한다. 카드 아래 빈 공간에서
+    // 시작하는 기존 방식은 위 세대의 vertical 과 같은 X 컬럼에 정렬되면 한 줄로
+    // 보여 chain 효과가 생김.
+    let stemTopY = parentBottomY;
+    if (parents.length === 2
+        && parents[0]._row === parents[1]._row
+        && parents[0].spouses.includes(parents[1].id)) {
+      stemTopY = cardY(parents[0], minR) + CARD_H / 2;  // 결혼선 Y
+    }
+    addLine(parentCenterX, stemTopY, parentCenterX, midY);
 
     // 자식들의 가로 연결선 — parentCenterX 도 범위에 포함시켜
     // 부모 세로선과 자식 세로선이 항상 만나도록 한다 (자식 1명 + 오프셋 케이스 대응)
@@ -553,12 +582,12 @@ function makeCardWrapper(p, minR, minC) {
   const titleVal = p[titleKey] || '';
   // 버전 토글 — 현재 표시 중인 가계 외에 다른 가계에도 같이 나오게 할지
   const otherV = state.activeVersion === 'b' ? 'a' : 'b';
-  const otherVName = otherV === 'a' ? '소속' : '결혼';
+  const otherVName = otherV === 'a' ? '가' : '나';
   const inOther = Array.isArray(p.versions) && p.versions.includes(otherV);
   const versionBtnLabel = inOther ? `✓ ${otherVName}` : `+ ${otherVName}`;
   const versionBtnTitle = inOther
-    ? `'${otherVName} 가계' 에서도 표시중 — 클릭하면 제외`
-    : `'${otherVName} 가계' 에 추가로 표시`;
+    ? `'${otherVName}' 가계에서도 표시중 — 클릭하면 제외`
+    : `'${otherVName}' 가계에 추가로 표시`;
 
   wrapper.innerHTML = `
     <div class="card">
@@ -1457,6 +1486,27 @@ function applyZoom() {
 
   const lbl = document.getElementById('zoomLabel');
   if (lbl) lbl.textContent = Math.round(zoom * 100) + '%';
+
+  // 보드 크기 바뀜 → 팬 슬라이더 max 도 갱신
+  syncPanSliderRange();
+}
+
+// 팬 슬라이더 — board-wrap 의 scrollLeft/scrollTop 를 슬라이더로 조작.
+// 콘텐츠가 viewport 보다 클 때만 활성화 (max > 0).
+function syncPanSliderRange() {
+  const wrap = document.getElementById('boardWrap');
+  const sH   = document.getElementById('panSliderH');
+  const sV   = document.getElementById('panSliderV');
+  if (!wrap || !sH || !sV) return;
+  const maxH = Math.max(0, wrap.scrollWidth  - wrap.clientWidth);
+  const maxV = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+  sH.max = maxH;
+  sV.max = maxV;
+  sH.disabled = maxH === 0;
+  sV.disabled = maxV === 0;
+  // 현재 스크롤 위치 반영
+  sH.value = Math.min(wrap.scrollLeft, maxH);
+  sV.value = Math.min(wrap.scrollTop,  maxV);
 }
 
 function setZoom(v) {
@@ -1508,9 +1558,7 @@ async function refreshFromServer() {
   const remote = await fetchFromServer();
   if (!remote) { alert('서버에서 데이터를 가져오지 못했어요. (오프라인이거나 서버 오류)'); return; }
   state = migrate(remote);
-  if (!state.perspective) state.perspective = 'A';
-  const radio = document.querySelector(`input[name="perspective"][value="${state.perspective}"]`);
-  if (radio) radio.checked = true;
+  syncVersionTabsUI();
   syncSpouseParents();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
   render();
@@ -1526,7 +1574,7 @@ function resetAll() {
   render();
 }
 
-// 탭 UI(소속/결혼) 의 active 상태를 state.activeVersion 와 동기화
+// 탭 UI(가/나) 의 active 상태를 state.activeVersion 와 동기화
 function syncVersionTabsUI() {
   const v = state.activeVersion || 'a';
   document.querySelectorAll('.version-tab').forEach(t => {
@@ -1539,9 +1587,8 @@ function syncVersionTabsUI() {
 // ── 부팅 ─────────────────────────────────────────
 (async function init() {
   state = await loadInitial();
-  if (!state.perspective) state.perspective = 'A';
-  const radio = document.querySelector(`input[name="perspective"][value="${state.perspective}"]`);
-  if (radio) radio.checked = true;
+  if (!state.activeVersion) state.activeVersion = 'a';
+  syncVersionTabsUI();
   // 기존 localStorage 데이터가 불일치 상태일 수 있으므로 동기화 한 번 수행 (예: 한쪽 부모만 가진 자식 → 양쪽 부모)
   syncSpouseParents();
   updateEditUI();
@@ -1563,7 +1610,19 @@ function syncVersionTabsUI() {
   };
   document.getElementById('zoomRange').oninput = (e) => setZoom(parseFloat(e.target.value));
   document.getElementById('btnFit').onclick    = fitToScreen;
-  window.addEventListener('resize', () => { if (autoFit) applyZoom(); });
+  window.addEventListener('resize', () => { if (autoFit) applyZoom(); else syncPanSliderRange(); });
+
+  // 팬 슬라이더 ↔ 보드 스크롤 동기화
+  const boardWrap = document.getElementById('boardWrap');
+  const panH = document.getElementById('panSliderH');
+  const panV = document.getElementById('panSliderV');
+  panH.oninput = (e) => { boardWrap.scrollLeft = parseFloat(e.target.value) || 0; };
+  panV.oninput = (e) => { boardWrap.scrollTop  = parseFloat(e.target.value) || 0; };
+  // 사용자가 보드를 직접 스크롤(휠/터치/스크롤바) 한 경우에도 슬라이더 위치 갱신
+  boardWrap.addEventListener('scroll', () => {
+    panH.value = boardWrap.scrollLeft;
+    panV.value = boardWrap.scrollTop;
+  }, { passive: true });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && parentMode) exitParentMode();
     if (e.key === 'Escape' && drag) {

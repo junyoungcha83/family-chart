@@ -30,7 +30,7 @@ body {
 }
 .page-header h1 { margin: 0; font-size: 1.4rem; }
 
-/* 가계 버전 탭 (소속 / 결혼) */
+/* 가계 버전 탭 (가 / 나) */
 .version-tabs {
   display: inline-flex;
   border: 1px solid var(--border);
@@ -104,17 +104,26 @@ body {
 }
 
 /* ── 보드 ── */
-.board-wrap {
+/* 보드 프레임: 보드 + 오른쪽 세로 슬라이더 + 아래 가로 슬라이더 grid 배치 */
+.board-frame {
   max-width: 100%;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: 1fr auto;
+  gap: 6px;
+  /* 페이지 자체가 스크롤되지 않고 보드 안에서 스크롤되게 — viewport 기준 높이 한정 */
+  max-height: calc(100dvh - 220px);
+}
+.board-wrap {
+  grid-column: 1;
+  grid-row: 1;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0;
   overflow: auto;          /* 확대 시 우/하 스크롤바 자동 표시 */
   min-height: 600px;
-  /* 페이지 자체가 스크롤되지 않고 보드 안에서 스크롤되게 — viewport 기준 높이 한정 */
-  max-height: calc(100dvh - 220px);
   /* 모바일에서 momentum 스크롤 */
   -webkit-overflow-scrolling: touch;
 }
@@ -123,6 +132,58 @@ body {
 .board-wrap::-webkit-scrollbar-track { background: #f1f5f9; }
 .board-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 2px solid #f1f5f9; }
 .board-wrap::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* 확대 시 위치 이동용 슬라이더 — 보드보다 콘텐츠가 클 때 활성화 */
+.pan-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+.pan-slider:disabled { opacity: .25; cursor: default; }
+.pan-slider-v {
+  grid-column: 2;
+  grid-row: 1;
+  width: 22px;
+  /* 세로 슬라이더 — writing-mode 로 회전 (위=0, 아래=max). 구버전 Safari 보조. */
+  writing-mode: vertical-lr;
+  -webkit-appearance: slider-vertical;
+}
+.pan-slider-h {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  height: 22px;
+}
+/* track + thumb 공통 스타일 */
+.pan-slider::-webkit-slider-runnable-track {
+  background: #e2e8f0;
+  border-radius: 6px;
+}
+.pan-slider-h::-webkit-slider-runnable-track { height: 8px; }
+.pan-slider-v::-webkit-slider-runnable-track { width: 8px; }
+.pan-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--link);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  margin-top: -4px;          /* 트랙 가운데 정렬 (가로) */
+}
+.pan-slider-v::-webkit-slider-thumb { margin-top: 0; margin-left: -4px; }
+.pan-slider::-moz-range-track { background: #e2e8f0; border-radius: 6px; height: 8px; }
+.pan-slider::-moz-range-thumb {
+  background: var(--link);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
 .board-scale {
   position: relative;
   /* width/height 는 JS 가 totalW*zoom, totalH*zoom 으로 설정 */

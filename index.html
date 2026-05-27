@@ -21,8 +21,8 @@
 <header class="page-header">
   <h1>가족관계도</h1>
   <div class="version-tabs" role="tablist" aria-label="가계 버전">
-    <button class="version-tab active" role="tab" data-version="a" aria-selected="true">소속 가계</button>
-    <button class="version-tab" role="tab" data-version="b" aria-selected="false">결혼 가계</button>
+    <button class="version-tab active" role="tab" data-version="a" aria-selected="true">가</button>
+    <button class="version-tab" role="tab" data-version="b" aria-selected="false">나</button>
   </div>
   <div class="zoom-control">
     <button class="btn secondary" id="btnFit" title="화면에 맞춤">맞춤</button>
@@ -44,10 +44,14 @@
   </div>
 </header>
 
-<div class="board-wrap">
-  <div class="board-scale" id="boardScale">
-    <div class="board" id="board"></div>
+<div class="board-frame">
+  <div class="board-wrap" id="boardWrap">
+    <div class="board-scale" id="boardScale">
+      <div class="board" id="board"></div>
+    </div>
   </div>
+  <input type="range" class="pan-slider pan-slider-v" id="panSliderV" min="0" max="0" step="1" value="0" aria-label="세로 위치" disabled />
+  <input type="range" class="pan-slider pan-slider-h" id="panSliderH" min="0" max="0" step="1" value="0" aria-label="가로 위치" disabled />
 </div>
 
 <p class="footnote">

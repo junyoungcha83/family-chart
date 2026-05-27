@@ -1,8 +1,9 @@
 {
-  "perspective": "A",
+  "activeVersion": "a",
   "people": [
     {
       "id": "p1",
+      "versions": ["a", "b"],
       "photo": "",
       "title_a": "나",
       "title_b": "남편",
@@ -12,12 +13,33 @@
     },
     {
       "id": "p2",
+      "versions": ["a", "b"],
       "photo": "",
       "title_a": "아내",
       "title_b": "나",
       "name": "",
       "parents": [],
       "spouses": ["p1"]
+    },
+    {
+      "id": "p3",
+      "versions": ["a", "b"],
+      "photo": "",
+      "title_a": "자녀",
+      "title_b": "자녀",
+      "name": "차승호",
+      "parents": ["p1", "p2"],
+      "spouses": []
+    },
+    {
+      "id": "p4",
+      "versions": ["a", "b"],
+      "photo": "",
+      "title_a": "자녀",
+      "title_b": "자녀",
+      "name": "차승아",
+      "parents": ["p1", "p2"],
+      "spouses": []
     }
   ]
 }

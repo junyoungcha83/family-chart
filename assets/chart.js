@@ -511,9 +511,12 @@ function makeConnectionsSvg(w, h, minR, minC) {
     svg.appendChild(line);
   };
 
-  // 접힌(wrap) 자녀 그룹마다 다른 색을 줘서 "이 줄들이 같은 부모의 자녀" 임을 구분
-  const WRAP_COLORS = ['#2563eb', '#059669', '#d97706', '#db2777', '#7c3aed', '#0891b2'];
-  let wrapColorIdx = 0;
+  // 형제 그룹(같은 부모)마다 고유 색의 실선 — 선이 화면에서 겹쳐 보여도 어느 자녀들이
+  // 한 부모의 자식인지 바로 구분. 부모키 해시로 색을 정해 렌더마다 동일(통일).
+  const groupColor = (key) => {
+    let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    return `hsl(${h % 360}, 65%, 45%)`;
+  };
 
   // (a) 부부 가로선 (한 쌍당 한 번만)
   const drawnPairs = new Set();
@@ -620,9 +623,9 @@ function makeConnectionsSvg(w, h, minR, minC) {
     // 접힘 그룹 — 자식이 여러 sub-row 로 나뉘면 행마다 색 있는 버스선으로 연결.
     // 부모 중심에서 마지막 행까지 세로 척추선(카드 뒤로 지나가 가려짐)을 긋고,
     // 각 행 위에 가로 버스선 + 카드로 내려가는 세로선을 같은 색으로 그린다.
+    const color = groupColor(key);
     const subRowsUsed = new Set(g.children.map(c => c._subRow || 0));
     if (subRowsUsed.size > 1) {
-      const color = WRAP_COLORS[wrapColorIdx++ % WRAP_COLORS.length];
       const BUS_UP = 22;   // 행 카드 위 버스선까지의 간격 (< WRAP_ROW_GAP)
       const rowsMap = {};
       for (const c of g.children) (rowsMap[c._subRow || 0] = rowsMap[c._subRow || 0] || []).push(c);
@@ -643,10 +646,10 @@ function makeConnectionsSvg(w, h, minR, minC) {
       continue;
     }
 
-    // 일반(한 줄) 그룹
+    // 일반(한 줄) 그룹 — 형제 그룹 색으로 통일
     const childTopY = Math.min(...g.children.map(c => cardY(c, minR)));
     const midY = (parentBottomY + childTopY) / 2 + (groupOffset[key] || 0);
-    addLine(parentCenterX, stemTopY, parentCenterX, midY);
+    addLine(parentCenterX, stemTopY, parentCenterX, midY, color);
 
     // 자식들의 가로 연결선 — parentCenterX 도 범위에 포함시켜
     // 부모 세로선과 자식 세로선이 항상 만나도록 한다 (자식 1명 + 오프셋 케이스 대응)
@@ -654,12 +657,12 @@ function makeConnectionsSvg(w, h, minR, minC) {
     const horizLeft  = Math.min(parentCenterX, ...childCxs);
     const horizRight = Math.max(parentCenterX, ...childCxs);
     if (horizRight > horizLeft) {
-      addLine(horizLeft, midY, horizRight, midY);
+      addLine(horizLeft, midY, horizRight, midY, color);
     }
     // 각 자식 → midY 으로 세로선
     for (const c of g.children) {
       const cx = cardX(c, minC) + CARD_W / 2;
-      addLine(cx, midY, cx, cardY(c, minR));
+      addLine(cx, midY, cx, cardY(c, minR), color);
     }
   }
 

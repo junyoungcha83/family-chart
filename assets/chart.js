@@ -9,6 +9,7 @@ const CARD_W = 180;
 const CARD_H = 250;
 const COL_UNIT = 200;     // col 1 단위 = 화면상 200px
 const ROW_GAP = 110;      // 세대 간 세로 간격
+const WRAP_ROW_GAP = 70;  // 접힌(wrap) 형제 sub-row 간 세로 간격
 const SIBLING_GAP = 1;    // 형제 unit 간 추가 간격 (col 단위) — 정수 그리드 정렬
 const PAD = 80;           // 보드 내부 padding (좌상)
 const HOVER_PAD = 50;     // + 버튼 hit-area 확장 (px)
@@ -31,6 +32,21 @@ const INITIAL_STATE = () => ({
 let state = null;
 let zoom = 1;
 let autoFit = true;
+// 레이아웃 계산 결과 (cardY 가 참조) — layout() 이 매번 갱신
+let _bandY = {};          // 세대(gen) → 누적 Y 오프셋(px)
+let _subRowsInGen = {};   // 세대(gen) → 그 세대가 쓰는 sub-row 개수
+let _lastWrapPerRow = null;
+
+// 화면 가로 크기에 따라 한 형제 행에 넣을 최대 자식 수.
+// 좁은 화면일수록 적게 넣어 자동으로 다음 줄(sub-row)로 접는다.
+function wrapPerRow() {
+  const w = window.innerWidth || 1000;
+  if (w < 600)  return 3;
+  if (w < 1000) return 4;
+  if (w < 1400) return 5;
+  return 6;
+}
+
 // 부모 지정 모드 상태: { childId, selected: string[], blocked: Set<string> }
 let parentMode = null;
 // 드래그앤드롭 상태: { id, startX, startY, started, ghost, blocked, dropTarget, dropZone, zonesEl }
@@ -96,7 +112,7 @@ async function pushToServer() {
   setSyncStatus('saving');
   try {
     const clean = JSON.parse(JSON.stringify(state));
-    for (const p of clean.people) { delete p._row; delete p._col; }
+    for (const p of clean.people) { delete p._row; delete p._col; delete p._subRow; delete p._yShift; }
 
     const res = await fetch(`${API_BASE}/api/family`, {
       method: 'PUT',
@@ -324,45 +340,70 @@ function layout() {
   }
   const rootUnits = units.filter(isRoot);
 
-  // 5) 각 unit 의 subtree width (재귀)
+  // 형제(자식 unit) 묶음이 화면 대비 너무 넓으면 여러 sub-row 로 접는다(wrap).
+  // 접기 조건: 자식 unit 이 모두 leaf(자기 자식이 없음) 이고, 개수가 perRow 초과.
+  //   → leaf 만 접으므로 아래 세대로 연쇄되지 않아 레이아웃이 단순·안정적.
+  const perRow = wrapPerRow();
+  function childRows(unit) {
+    if (unit._childRows) return unit._childRows;
+    const cus = unit.childUnits;
+    if (cus.length <= perRow) {
+      unit._childRows = [cus.slice()];   // 한 줄
+      return unit._childRows;
+    }
+    // 넓은 형제 그룹은 손주 유무와 관계없이 여러 sub-row 로 접는다.
+    // (접힌 가지의 자손은 아래 _yShift 로 부모를 따라 함께 내려간다)
+    const rows = Math.ceil(cus.length / perRow);
+    const per  = Math.ceil(cus.length / rows);   // 행을 고르게 분배 (예: 7 → 4+3)
+    const out = [];
+    for (let i = 0; i < cus.length; i += per) out.push(cus.slice(i, i + per));
+    unit._childRows = out;
+    return out;
+  }
+  function rowWidth(row) {
+    let w = 0;
+    row.forEach((cu, i) => { w += subtreeWidth(cu); if (i > 0) w += SIBLING_GAP; });
+    return w;
+  }
+
+  // 5) 각 unit 의 subtree width (재귀) — 접힌 경우 폭 = 가장 넓은 행
   function subtreeWidth(unit) {
     if (unit._sw !== undefined) return unit._sw;
     const selfW = unit.members.length;
-    if (unit.childUnits.length === 0) {
-      unit._sw = selfW;
-      return unit._sw;
-    }
-    let childW = 0;
-    unit.childUnits.forEach((cu, i) => {
-      childW += subtreeWidth(cu);
-      if (i > 0) childW += SIBLING_GAP;
-    });
+    if (unit.childUnits.length === 0) { unit._sw = selfW; return unit._sw; }
+    const childW = Math.max(...childRows(unit).map(rowWidth));
     unit._sw = Math.max(selfW, childW);
     return unit._sw;
   }
   units.forEach(subtreeWidth);
 
   // 6) col 할당 (top-down, 자식들은 부모 중심에 정렬)
+  //    subRow = 이 unit 이 자기 세대 안에서 몇 번째 접힘 행에 놓이는지 (0 = 첫 줄)
   const cols = {};
-  function assignCols(unit, centerCol) {
+  const subRows = {};
+  const yShift = {};                        // id → 누적 세로 오프셋(px). 접힌 조상마다 누적됨
+  const ROW_STRIDE = CARD_H + WRAP_ROW_GAP; // sub-row 하나 내려갈 때의 세로 간격
+  function assignCols(unit, centerCol, subRow, parentShift) {
+    const shift = parentShift + subRow * ROW_STRIDE;
     const startCol = centerCol - (unit.members.length - 1) / 2;
-    unit.members.forEach((m, i) => { cols[m.id] = startCol + i; });
+    unit.members.forEach((m, i) => { cols[m.id] = startCol + i; subRows[m.id] = subRow; yShift[m.id] = shift; });
 
     if (unit.childUnits.length === 0) return;
-    const totalChildW = unit.childUnits.reduce((acc, cu, i) => {
-      return acc + subtreeWidth(cu) + (i > 0 ? SIBLING_GAP : 0);
-    }, 0);
-    let cursor = centerCol - totalChildW / 2;
-    for (const cu of unit.childUnits) {
-      const cw = subtreeWidth(cu);
-      assignCols(cu, cursor + cw / 2);  // 자식 unit 의 중심 = cursor + cw/2
-      cursor += cw + SIBLING_GAP;
-    }
+    // 접힌 행마다 부모 중심 아래에 다시 가운데 정렬해서 배치
+    childRows(unit).forEach((row, r) => {
+      const rw = rowWidth(row);
+      let cursor = centerCol - rw / 2;
+      for (const cu of row) {
+        const cw = subtreeWidth(cu);
+        assignCols(cu, cursor + cw / 2, r, shift);   // 접힌 가지 자손은 shift 를 물려받아 함께 내려감
+        cursor += cw + SIBLING_GAP;
+      }
+    });
   }
   let rootCursor = 0;
   for (const r of rootUnits) {
     const rw = subtreeWidth(r);
-    assignCols(r, rootCursor + rw / 2);
+    assignCols(r, rootCursor + rw / 2, 0, 0);
     rootCursor += rw + 1.5;
   }
 
@@ -370,16 +411,38 @@ function layout() {
   for (const p of people) {
     p._row = gens[p.id] || 0;
     p._col = cols[p.id] !== undefined ? cols[p.id] : 0;
+    p._subRow = subRows[p.id] || 0;
+    p._yShift = yShift[p.id] || 0;
   }
+
+  // 8) 세대별 band Y — 그 세대에서 쓰인 최대 세로 오프셋(_yShift)만큼 공간을 더
+  //    확보하고, 아래 세대들을 그만큼 밀어내려 겹치지 않게 한다.
+  //    (접힘이 전혀 없으면 maxShift=0 → 기존 수식과 완전히 동일)
+  const maxShiftInGen = {};
+  for (const p of people) {
+    const g = p._row;
+    maxShiftInGen[g] = Math.max(maxShiftInGen[g] || 0, p._yShift || 0);
+  }
+  _subRowsInGen = maxShiftInGen;   // (호환용 참조)
+  _bandY = {};
+  const minGg = people.length ? Math.min(...people.map(p => p._row)) : 0;
+  const maxGg = people.length ? Math.max(...people.map(p => p._row)) : 0;
+  let accY = 0;
+  for (let g = minGg; g <= maxGg; g++) {
+    _bandY[g] = accY;
+    accY += (maxShiftInGen[g] || 0) + CARD_H + ROW_GAP;
+  }
+  _lastWrapPerRow = perRow;
 }
 
 // 카드 좌상단 X
 function cardX(p, minCol) {
   return PAD + (p._col - minCol) * COL_UNIT;
 }
-// 카드 좌상단 Y
+// 카드 좌상단 Y — 세대 band 오프셋 + 접힘 누적 세로 오프셋(_yShift)
 function cardY(p, minRow) {
-  return PAD + (p._row - minRow) * (CARD_H + ROW_GAP);
+  const base = (_bandY[p._row] || 0) - (_bandY[minRow] || 0);
+  return PAD + base + (p._yShift || 0);
 }
 
 // ── 렌더링 ─────────────────────────────────────────
@@ -403,12 +466,14 @@ function render() {
 
     const minR = Math.min(...state.people.map(p => p._row));
     const minC = Math.min(...state.people.map(p => p._col));
-    const maxR = Math.max(...state.people.map(p => p._row));
-    const maxC = Math.max(...state.people.map(p => p._col));
-    const widthCols = maxC - minC + 1;
-    const heightRows = maxR - minR + 1;
-    const totalW = PAD * 2 + (widthCols - 1) * COL_UNIT + CARD_W;
-    const totalH = PAD * 2 + (heightRows - 1) * (CARD_H + ROW_GAP) + CARD_H;
+    // 접힘 때문에 카드 Y 가 세대만으로 결정되지 않으므로 실제 카드 위치에서 크기 산출
+    let maxRight = 0, maxBottom = 0;
+    for (const p of state.people) {
+      maxRight  = Math.max(maxRight,  cardX(p, minC) + CARD_W);
+      maxBottom = Math.max(maxBottom, cardY(p, minR) + CARD_H);
+    }
+    const totalW = maxRight + PAD;
+    const totalH = maxBottom + PAD;
     board.style.width = totalW + 'px';
     board.style.height = totalH + 'px';
 
@@ -436,14 +501,19 @@ function makeConnectionsSvg(w, h, minR, minC) {
   svg.setAttribute('height', h);
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
-  const addLine = (x1, y1, x2, y2) => {
+  const addLine = (x1, y1, x2, y2, color) => {
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     line.setAttribute('x1', x1);
     line.setAttribute('y1', y1);
     line.setAttribute('x2', x2);
     line.setAttribute('y2', y2);
+    if (color) { line.setAttribute('stroke', color); line.setAttribute('stroke-width', 3); }
     svg.appendChild(line);
   };
+
+  // 접힌(wrap) 자녀 그룹마다 다른 색을 줘서 "이 줄들이 같은 부모의 자녀" 임을 구분
+  const WRAP_COLORS = ['#2563eb', '#059669', '#d97706', '#db2777', '#7c3aed', '#0891b2'];
+  let wrapColorIdx = 0;
 
   // (a) 부부 가로선 (한 쌍당 한 번만)
   const drawnPairs = new Set();
@@ -535,8 +605,6 @@ function makeConnectionsSvg(w, h, minR, minC) {
     const parentCxs = parents.map(pp => cardX(pp, minC) + CARD_W / 2);
     const parentCenterX = (Math.min(...parentCxs) + Math.max(...parentCxs)) / 2;
     const parentBottomY = Math.max(...parents.map(pp => cardY(pp, minR) + CARD_H));
-    const childTopY = Math.min(...g.children.map(c => cardY(c, minR)));
-    const midY = (parentBottomY + childTopY) / 2 + (groupOffset[key] || 0);
 
     // 부부 한 쌍이 부모인 경우 — 세로선의 시작을 두 카드 사이의 결혼선(가로) 한
     // 가운데에서 떨어뜨려 T자 분기처럼 보이게 한다. 카드 아래 빈 공간에서
@@ -548,6 +616,36 @@ function makeConnectionsSvg(w, h, minR, minC) {
         && parents[0].spouses.includes(parents[1].id)) {
       stemTopY = cardY(parents[0], minR) + CARD_H / 2;  // 결혼선 Y
     }
+
+    // 접힘 그룹 — 자식이 여러 sub-row 로 나뉘면 행마다 색 있는 버스선으로 연결.
+    // 부모 중심에서 마지막 행까지 세로 척추선(카드 뒤로 지나가 가려짐)을 긋고,
+    // 각 행 위에 가로 버스선 + 카드로 내려가는 세로선을 같은 색으로 그린다.
+    const subRowsUsed = new Set(g.children.map(c => c._subRow || 0));
+    if (subRowsUsed.size > 1) {
+      const color = WRAP_COLORS[wrapColorIdx++ % WRAP_COLORS.length];
+      const BUS_UP = 22;   // 행 카드 위 버스선까지의 간격 (< WRAP_ROW_GAP)
+      const rowsMap = {};
+      for (const c of g.children) (rowsMap[c._subRow || 0] = rowsMap[c._subRow || 0] || []).push(c);
+      const rowKeys = Object.keys(rowsMap).map(Number).sort((a, b) => a - b);
+      const lastKids = rowsMap[rowKeys[rowKeys.length - 1]];
+      const spineBottom = cardY(lastKids[0], minR) - BUS_UP;
+      addLine(parentCenterX, stemTopY, parentCenterX, spineBottom, color);
+      for (const r of rowKeys) {
+        const kids = rowsMap[r];
+        const busY = cardY(kids[0], minR) - BUS_UP;
+        const cxs  = kids.map(c => cardX(c, minC) + CARD_W / 2);
+        addLine(Math.min(parentCenterX, ...cxs), busY, Math.max(parentCenterX, ...cxs), busY, color);
+        for (const c of kids) {
+          const cx = cardX(c, minC) + CARD_W / 2;
+          addLine(cx, busY, cx, cardY(c, minR), color);
+        }
+      }
+      continue;
+    }
+
+    // 일반(한 줄) 그룹
+    const childTopY = Math.min(...g.children.map(c => cardY(c, minR)));
+    const midY = (parentBottomY + childTopY) / 2 + (groupOffset[key] || 0);
     addLine(parentCenterX, stemTopY, parentCenterX, midY);
 
     // 자식들의 가로 연결선 — parentCenterX 도 범위에 포함시켜
@@ -1547,7 +1645,7 @@ function fitToScreen() {
 function exportJson() {
   const clean = JSON.parse(JSON.stringify(state));
   // 계산 임시값 제거
-  for (const p of clean.people) { delete p._row; delete p._col; }
+  for (const p of clean.people) { delete p._row; delete p._col; delete p._subRow; delete p._yShift; }
   const json = JSON.stringify(clean, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1638,7 +1736,11 @@ function syncVersionTabsUI() {
   const stepZoom = (delta) => setZoom(Math.max(0.3, Math.min(2, +((zoom + delta).toFixed(2)))));
   document.getElementById('btnZoomOut').onclick = () => stepZoom(-ZOOM_STEP);
   document.getElementById('btnZoomIn').onclick  = () => stepZoom(+ZOOM_STEP);
-  window.addEventListener('resize', () => { if (autoFit) applyZoom(); else syncPanSliderRange(); });
+  window.addEventListener('resize', () => {
+    // 화면 폭 구간이 바뀌면 접힘(wrap) 개수가 달라지므로 재배치
+    if (_lastWrapPerRow !== null && wrapPerRow() !== _lastWrapPerRow) { render(); return; }
+    if (autoFit) applyZoom(); else syncPanSliderRange();
+  });
 
   // 팬 슬라이더 ↔ 보드 스크롤 동기화
   const boardWrap = document.getElementById('boardWrap');

@@ -507,7 +507,9 @@ function makeConnectionsSvg(w, h, minR, minC) {
     line.setAttribute('y1', y1);
     line.setAttribute('x2', x2);
     line.setAttribute('y2', y2);
-    if (color) { line.setAttribute('stroke', color); line.setAttribute('stroke-width', 3); }
+    // 인라인 style 로 지정 — CSS(.connections line{stroke:var(--line)}) 규칙보다 우선함.
+    // (setAttribute('stroke') 는 프레젠테이션 속성이라 CSS 에 밀려 색이 안 먹었음)
+    if (color) { line.style.stroke = color; line.style.strokeWidth = '3px'; }
     svg.appendChild(line);
   };
 

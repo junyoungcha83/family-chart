@@ -513,12 +513,10 @@ function makeConnectionsSvg(w, h, minR, minC) {
     svg.appendChild(line);
   };
 
-  // 형제 그룹(같은 부모)마다 고유 색의 실선 — 선이 화면에서 겹쳐 보여도 어느 자녀들이
-  // 한 부모의 자식인지 바로 구분. 부모키 해시로 색을 정해 렌더마다 동일(통일).
-  const groupColor = (key) => {
-    let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-    return `hsl(${h % 360}, 65%, 45%)`;
-  };
+  // 세대별로 색 통일 — 같은 세대의 형제 연결선은 모두 같은 색.
+  // 예) 부모→자식(4쌍) 연결선 = 한 색, 자식→손주(2쌍) 연결선 = 또 다른 한 색.
+  const GEN_COLORS = ['#2563eb', '#059669', '#d97706', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#65a30d', '#9333ea'];
+  const genColor = (row) => GEN_COLORS[((row % GEN_COLORS.length) + GEN_COLORS.length) % GEN_COLORS.length];
 
   // (a) 부부 가로선 (한 쌍당 한 번만)
   const drawnPairs = new Set();
@@ -625,7 +623,8 @@ function makeConnectionsSvg(w, h, minR, minC) {
     // 접힘 그룹 — 자식이 여러 sub-row 로 나뉘면 행마다 색 있는 버스선으로 연결.
     // 부모 중심에서 마지막 행까지 세로 척추선(카드 뒤로 지나가 가려짐)을 긋고,
     // 각 행 위에 가로 버스선 + 카드로 내려가는 세로선을 같은 색으로 그린다.
-    const color = groupColor(key);
+    const gRow = Math.min(...g.children.map(c => c._row));   // 자식들의 세대 → 그 세대 색
+    const color = genColor(gRow);
     const subRowsUsed = new Set(g.children.map(c => c._subRow || 0));
     if (subRowsUsed.size > 1) {
       const BUS_UP = 22;   // 행 카드 위 버스선까지의 간격 (< WRAP_ROW_GAP)

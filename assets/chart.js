@@ -515,7 +515,8 @@ function makeConnectionsSvg(w, h, minR, minC) {
 
   // 세대별로 색 통일 — 같은 세대의 형제 연결선은 모두 같은 색.
   // 예) 부모→자식(4쌍) 연결선 = 한 색, 자식→손주(2쌍) 연결선 = 또 다른 한 색.
-  const GEN_COLORS = ['#2563eb', '#059669', '#d97706', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#65a30d', '#9333ea'];
+  // index = 자식 세대(row). row1=자식(초록), row2=손주(파랑), row3~ 이하 순환.
+  const GEN_COLORS = ['#2563eb', '#059669', '#2563eb', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#65a30d', '#9333ea'];
   const genColor = (row) => GEN_COLORS[((row % GEN_COLORS.length) + GEN_COLORS.length) % GEN_COLORS.length];
 
   // (a) 부부 가로선 (한 쌍당 한 번만)
